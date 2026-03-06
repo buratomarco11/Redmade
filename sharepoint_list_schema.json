@@ -1,0 +1,144 @@
+{
+  "listName": "Registro Sdoganamenti",
+  "description": "Log automatico di tutte le operazioni di sdoganamento FedEx gestite dal flusso n8n",
+  "columns": [
+    {
+      "name": "Title",
+      "type": "Text",
+      "required": true,
+      "description": "Identificativo riga, formato: AWB XXXXXXXXXXXX"
+    },
+    {
+      "name": "AWB",
+      "type": "Text",
+      "maxLength": 12,
+      "required": true,
+      "description": "Air Waybill Number (12 cifre)"
+    },
+    {
+      "name": "DataOra",
+      "type": "DateTime",
+      "required": true,
+      "description": "Timestamp elaborazione flusso (ISO 8601)"
+    },
+    {
+      "name": "Fornitore",
+      "type": "Text",
+      "required": false,
+      "description": "SellerName estratto dalla Commercial Invoice"
+    },
+    {
+      "name": "NumeroFattura",
+      "type": "Text",
+      "required": false,
+      "description": "InvoiceNumber CI"
+    },
+    {
+      "name": "ImportoFattura",
+      "type": "Number",
+      "decimals": 2,
+      "required": false,
+      "description": "TotalAmount CI (valore numerico)"
+    },
+    {
+      "name": "Valuta",
+      "type": "Text",
+      "maxLength": 3,
+      "required": false,
+      "description": "Currency CI (es. USD, EUR)"
+    },
+    {
+      "name": "HSCode",
+      "type": "Text",
+      "required": false,
+      "description": "Codice doganale HS estratto da CI"
+    },
+    {
+      "name": "OriginCountry",
+      "type": "Text",
+      "required": false,
+      "description": "Paese di origine merce da CI"
+    },
+    {
+      "name": "Stato",
+      "type": "Choice",
+      "required": true,
+      "choices": ["AUTO-INVIATO", "BOZZA", "IN APPROVAZIONE", "ECCEZIONE", "ANNULLATO"],
+      "defaultValue": "BOZZA",
+      "description": "Stato elaborazione: AUTO-INVIATO=risposta inviata automaticamente, ECCEZIONE=intervento manuale richiesto"
+    },
+    {
+      "name": "LinkCartella",
+      "type": "URL",
+      "required": false,
+      "description": "URL cartella SharePoint /Dogana/FedEx/AAAA-MM/AWB/"
+    },
+    {
+      "name": "QualityCheck",
+      "type": "Note",
+      "required": false,
+      "description": "Risultato gate di qualità: OK oppure elenco errori trovati"
+    },
+    {
+      "name": "EmailMittente",
+      "type": "Text",
+      "required": false,
+      "description": "Indirizzo email FedEx sorgente"
+    },
+    {
+      "name": "OggettoEmail",
+      "type": "Text",
+      "required": false,
+      "description": "Subject originale email FedEx"
+    }
+  ],
+  "views": [
+    {
+      "name": "Tutte le Spedizioni",
+      "columns": ["AWB", "DataOra", "Fornitore", "NumeroFattura", "ImportoFattura", "Valuta", "HSCode", "Stato", "LinkCartella"],
+      "sort": [{ "column": "DataOra", "direction": "DESC" }]
+    },
+    {
+      "name": "Eccezioni da Gestire",
+      "columns": ["AWB", "DataOra", "Fornitore", "QualityCheck", "LinkCartella"],
+      "filter": "Stato eq 'ECCEZIONE'",
+      "sort": [{ "column": "DataOra", "direction": "DESC" }]
+    },
+    {
+      "name": "Inviate Oggi",
+      "columns": ["AWB", "DataOra", "Fornitore", "NumeroFattura", "ImportoFattura", "Valuta", "Stato"],
+      "filter": "DataOra ge [Today]",
+      "sort": [{ "column": "DataOra", "direction": "DESC" }]
+    }
+  ],
+  "graphApiCreateExample": {
+    "description": "Chiamata Graph API per creare la lista su SharePoint",
+    "endpoint": "POST https://graph.microsoft.com/v1.0/sites/{site-id}/lists",
+    "body": {
+      "displayName": "Registro Sdoganamenti",
+      "columns": [
+        { "name": "AWB", "text": {} },
+        { "name": "DataOra", "dateTime": { "displayAs": "dateTime" } },
+        { "name": "Fornitore", "text": {} },
+        { "name": "NumeroFattura", "text": {} },
+        { "name": "ImportoFattura", "number": { "decimalPlaces": "twoDecimals" } },
+        { "name": "Valuta", "text": { "maxLength": 3 } },
+        { "name": "HSCode", "text": {} },
+        { "name": "OriginCountry", "text": {} },
+        {
+          "name": "Stato",
+          "choice": {
+            "allowTextEntry": false,
+            "choices": ["AUTO-INVIATO", "BOZZA", "IN APPROVAZIONE", "ECCEZIONE", "ANNULLATO"],
+            "displayAs": "dropDownMenu"
+          }
+        },
+        { "name": "LinkCartella", "hyperlinkOrPicture": { "isPicture": false } },
+        { "name": "QualityCheck", "text": { "allowMultipleLines": true } },
+        { "name": "EmailMittente", "text": {} },
+        { "name": "OggettoEmail", "text": {} }
+      ],
+      "list": { "template": "genericList" }
+    }
+  }
+}
