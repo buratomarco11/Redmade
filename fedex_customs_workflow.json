@@ -1,748 +1,558 @@
 {
-  "name": "FedEx Customs Clearance - Sdoganamento Automatico",
   "nodes": [
     {
       "parameters": {
-        "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
+        "operation": "getAll",
+        "limit": 10,
+        "filtersUI": {
+          "values": {
+            "filters": {
+              "readStatus": "unread",
+              "sender": "doganafedex@fedex.com"
+            }
+          }
         },
-        "filters": {},
-        "options": {
-          "downloadAttachments": true,
-          "attachmentsPrefix": "attachment_"
+        "options": {}
+      },
+      "id": "f9709e03-ffe1-4f2c-8818-6b96f9b1442c",
+      "name": "📧 Trigger - Nuova Mail FedEx",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [-1440, 208],
+      "webhookId": "c4ecd9d7-ede1-4122-9f82-9ae7820584a8",
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "1tKgetrUSnruGiVP",
+          "name": "Microsoft Outlook account"
         }
       },
-      "id": "n1_outlook_trigger",
-      "name": "Outlook - Nuova Email",
-      "type": "n8n-nodes-base.microsoftOutlookTrigger",
-      "typeVersion": 1,
-      "position": [100, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "updateFields": {
+          "isRead": true,
+          "toRecipients": "dogana@redmade.it"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [-1232, 208],
+      "id": "9f6343e0-32d7-4135-a56b-0e35cc216e15",
+      "name": "Update a message",
+      "webhookId": "09e29321-6f66-449e-8466-2e48e1c49f56",
       "credentials": {
-        "microsoftOutlookOAuth2Api": { "id": "CRED_OUTLOOK", "name": "Outlook Dogana" }
+        "microsoftOutlookOAuth2Api": {
+          "id": "1tKgetrUSnruGiVP",
+          "name": "Microsoft Outlook account"
+        }
       }
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
           "conditions": [
             {
-              "id": "cond_sender",
-              "leftValue": "={{ $json.from }}",
-              "rightValue": "fedex.com",
-              "operator": { "type": "string", "operation": "contains" }
+              "id": "cond_fedex",
+              "leftValue": "={{ $('📧 Trigger - Nuova Mail FedEx').item.json.from }}",
+              "rightValue": "doganafedex@fedex.com",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             },
             {
               "id": "cond_subject",
               "leftValue": "={{ $json.subject }}",
               "rightValue": "Your FEDEX Shipment",
-              "operator": { "type": "string", "operation": "contains" }
-            },
-            {
-              "id": "cond_attachments",
-              "leftValue": "={{ $json.hasAttachments }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true" }
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
             }
           ],
           "combinator": "and"
-        }
+        },
+        "options": {}
       },
-      "id": "n2_if_fedex",
-      "name": "IF - Email FedEx valida?",
+      "id": "918399bc-54d1-4d15-9a21-0b9bb34c7e19",
+      "name": "🔍 Filtro Mail FedEx Valida",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [320, 300]
+      "position": [-1040, 96]
     },
     {
       "parameters": {
-        "jsCode": "// ─── ESTRAI AWB DAL SUBJECT (12 CIFRE) ───\nconst subject = $input.item.json.subject || '';\nconst awbMatch = subject.match(/(\\d{12})/);\nconst awb = awbMatch ? awbMatch[1] : null;\n\n// ─── DATA ODIERNA PER CARTELLA ───\nconst now = new Date();\nconst yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;\nconst today = now.toISOString().split('T')[0];\n\n// ─── PATH SHAREPOINT ───\nconst folderPath = awb\n  ? `/Dogana/FedEx/${yearMonth}/${awb}`\n  : `/Dogana/FedEx/${yearMonth}/NOAWB_${Date.now()}`;\n\nreturn {\n  awb,\n  awbValid: awb !== null && awb.length === 12,\n  yearMonth,\n  today,\n  folderPath,\n  emailSubject: subject,\n  emailFrom: $input.item.json.from,\n  emailId: $input.item.json.id,\n  conversationId: $input.item.json.conversationId,\n  attachments: $input.item.json.attachments || []\n};"
-      },
-      "id": "n3_extract_awb",
-      "name": "Code - Estrai AWB e Inizializza Variabili",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [540, 220]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/root:{{$json.folderPath}}:/children",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        "resource": "messageAttachment",
+        "operation": "getAll",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('📧 Trigger - Nuova Mail FedEx').item.json.id }}",
+          "mode": "id"
         },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "name", "value": "={{ $json.awb || 'NOAWB' }}" },
-            { "name": "folder", "value": "={}" },
-            { "name": "@microsoft.graph.conflictBehavior", "value": "rename" }
-          ]
-        },
-        "options": {}
-      },
-      "id": "n4_create_folder",
-      "name": "HTTP - Crea Cartella SharePoint",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [760, 220],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Passa dati dalla email trigger + info cartella creata\nconst prev = $('Code - Estrai AWB e Inizializza Variabili').first().json;\nreturn {\n  ...prev,\n  spFolderId: $input.item.json.id,\n  spFolderWebUrl: $input.item.json.webUrl\n};"
-      },
-      "id": "n5_merge_folder_info",
-      "name": "Code - Merge Info Cartella",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [980, 220]
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── CLASSIFICA E PREPARA ALLEGATI ───\nconst attachments = $input.item.json.attachments || [];\nconst result = [];\n\nfor (const att of attachments) {\n  const name = (att.name || '').toUpperCase();\n  let docType = 'OTHER';\n\n  if (name.includes('CI') || name.includes('COMMERCIAL_INVOICE') || name.includes('COMMERCIAL INVOICE')) {\n    docType = 'CI';\n  } else if (name.includes('PL') || name.includes('PACKING_LIST') || name.includes('PACKING LIST')) {\n    docType = 'PL';\n  } else if (name.includes('AWB') || name.includes('AIR_WAYBILL') || name.includes('AIRWAYBILL')) {\n    docType = 'AWB';\n  }\n\n  result.push({\n    ...att,\n    docType,\n    spFileName: `${docType}_${att.name}`\n  });\n}\n\nconst meta = $('Code - Merge Info Cartella').first().json;\nreturn result.map(att => ({ ...meta, attachment: att }));"
-      },
-      "id": "n6_classify_attachments",
-      "name": "Code - Classifica Allegati",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1200, 220]
-    },
-    {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "id": "n7_loop_attachments",
-      "name": "Loop - Allegati uno per uno",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [1420, 220]
-    },
-    {
-      "parameters": {
-        "method": "PUT",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/items/{{$json.spFolderId}}:/{{$json.attachment.spFileName}}:/content",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/pdf" }]
-        },
-        "sendBody": true,
-        "contentType": "binaryData",
-        "inputDataFieldName": "={{ $json.attachment.data }}",
-        "options": {}
-      },
-      "id": "n8_upload_attachment",
-      "name": "HTTP - Upload Allegato SharePoint",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1640, 220],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Dopo il loop, raccogli tutti gli allegati classificati\nconst allItems = $input.all();\nconst meta = allItems[0].json;\n\nconst ci = allItems.find(i => i.json.attachment?.docType === 'CI');\nconst pl = allItems.find(i => i.json.attachment?.docType === 'PL');\nconst awbDoc = allItems.find(i => i.json.attachment?.docType === 'AWB');\n\nreturn {\n  ...meta,\n  ciFile: ci ? ci.json.attachment : null,\n  plFile: pl ? pl.json.attachment : null,\n  awbDocFile: awbDoc ? awbDoc.json.attachment : null,\n  ciFound: !!ci,\n  plFound: !!pl\n};"
-      },
-      "id": "n9_collect_classified",
-      "name": "Code - Raccogli Documenti Classificati",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1860, 220]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "model", "value": "gpt-4o" },
-            {
-              "name": "messages",
-              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"Sei un esperto di commercio internazionale. Estrai i seguenti dati dalla Commercial Invoice in formato JSON STRETTO, senza markdown. Campi: InvoiceNumber, InvoiceDate (YYYY-MM-DD), SellerName, BuyerName, BuyerAddress, OriginCountry, Incoterm, Currency, TotalAmount (numero float), HSCode (stringa). Se un campo non è trovato, metti null.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Documento CI in formato base64 (PDF). Testo estratto:\\n\\n{{ $json.ciFile.content }}\"\n  }\n]"
-            },
-            { "name": "max_tokens", "value": "800" },
-            { "name": "temperature", "value": "0" }
-          ]
-        },
-        "options": {}
-      },
-      "id": "n10_extract_ci_openai",
-      "name": "HTTP - Estrai Dati CI (OpenAI GPT-4o)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [2080, 120],
-      "credentials": {
-        "openAiApi": { "id": "CRED_OPENAI", "name": "OpenAI" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── PARSE RISPOSTA CI DA GPT-4o ───\nconst raw = $input.item.json.choices?.[0]?.message?.content || '{}';\nlet ciData = {};\ntry {\n  // Pulisci eventuale markdown code block\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  ciData = JSON.parse(cleaned);\n} catch(e) {\n  ciData = { parseError: true, rawResponse: raw };\n}\n\nconst meta = $('Code - Raccogli Documenti Classificati').first().json;\nreturn {\n  ...meta,\n  ci: {\n    InvoiceNumber: ciData.InvoiceNumber || null,\n    InvoiceDate: ciData.InvoiceDate || null,\n    SellerName: ciData.SellerName || null,\n    BuyerName: ciData.BuyerName || null,\n    BuyerAddress: ciData.BuyerAddress || null,\n    OriginCountry: ciData.OriginCountry || null,\n    Incoterm: ciData.Incoterm || null,\n    Currency: ciData.Currency || null,\n    TotalAmount: parseFloat(ciData.TotalAmount) || 0,\n    HSCode: ciData.HSCode || null,\n    parseError: ciData.parseError || false\n  }\n};"
-      },
-      "id": "n11_parse_ci",
-      "name": "Code - Parsing Risposta CI",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2300, 120]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "model", "value": "gpt-4o" },
-            {
-              "name": "messages",
-              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"Sei un esperto di commercio internazionale. Estrai i seguenti dati dalla Packing List in formato JSON STRETTO, senza markdown. Campi: TotalCartons (intero), TotalNetWeight (float, kg), TotalGrossWeight (float, kg), TotalVolume (float, m3 o null), HSCode (stringa), OriginCountry (stringa). Se un campo non è trovato, metti null.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"Documento PL in formato testo estratto:\\n\\n{{ $json.plFile.content }}\"\n  }\n]"
-            },
-            { "name": "max_tokens", "value": "600" },
-            { "name": "temperature", "value": "0" }
-          ]
-        },
-        "options": {}
-      },
-      "id": "n12_extract_pl_openai",
-      "name": "HTTP - Estrai Dati PL (OpenAI GPT-4o)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [2080, 340],
-      "credentials": {
-        "openAiApi": { "id": "CRED_OPENAI", "name": "OpenAI" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── PARSE RISPOSTA PL DA GPT-4o ───\nconst raw = $input.item.json.choices?.[0]?.message?.content || '{}';\nlet plData = {};\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  plData = JSON.parse(cleaned);\n} catch(e) {\n  plData = { parseError: true, rawResponse: raw };\n}\n\nconst meta = $('Code - Raccogli Documenti Classificati').first().json;\nreturn {\n  ...meta,\n  pl: {\n    TotalCartons: parseInt(plData.TotalCartons) || null,\n    TotalNetWeight: parseFloat(plData.TotalNetWeight) || null,\n    TotalGrossWeight: parseFloat(plData.TotalGrossWeight) || null,\n    TotalVolume: parseFloat(plData.TotalVolume) || null,\n    HSCode: plData.HSCode || null,\n    OriginCountry: plData.OriginCountry || null,\n    parseError: plData.parseError || false\n  }\n};"
-      },
-      "id": "n13_parse_pl",
-      "name": "Code - Parsing Risposta PL",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2300, 340]
-    },
-    {
-      "parameters": {
-        "mode": "multiplex",
-        "options": {}
-      },
-      "id": "n14_merge_ci_pl",
-      "name": "Merge - Unisci Dati CI + PL",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [2520, 220]
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── GATE DI QUALITÀ ─────────────────────────────────────\n// Combina i dati CI e PL da entrambi i rami del merge\nconst items = $input.all();\nconst ciItem = items.find(i => i.json.ci);\nconst plItem = items.find(i => i.json.pl);\n\nconst ci = ciItem?.json.ci || {};\nconst pl = plItem?.json.pl || {};\nconst meta = ciItem?.json || plItem?.json || {};\n\nconst checks = [];\nlet passed = true;\n\n// Check 1: AWB 12 cifre\nif (!meta.awbValid) {\n  checks.push({ id: 'CHECK_AWB', ok: false, msg: `AWB non trovato o non valido: '${meta.awb}'` });\n  passed = false;\n} else {\n  checks.push({ id: 'CHECK_AWB', ok: true, msg: `AWB OK: ${meta.awb}` });\n}\n\n// Check 2: TotalAmount > 0\nif (!ci.TotalAmount || ci.TotalAmount <= 0) {\n  checks.push({ id: 'CHECK_AMOUNT', ok: false, msg: `TotalAmount CI mancante o zero: ${ci.TotalAmount}` });\n  passed = false;\n} else {\n  checks.push({ id: 'CHECK_AMOUNT', ok: true, msg: `Amount OK: ${ci.TotalAmount} ${ci.Currency}` });\n}\n\n// Check 3: HSCode CI vs PL (solo se PL presente)\nif (meta.plFound && pl.HSCode && ci.HSCode) {\n  const hsMatch = ci.HSCode.replace(/\\s/g, '') === pl.HSCode.replace(/\\s/g, '');\n  if (!hsMatch) {\n    checks.push({ id: 'CHECK_HSCODE', ok: false, msg: `HSCode CI (${ci.HSCode}) != HSCode PL (${pl.HSCode})` });\n    passed = false;\n  } else {\n    checks.push({ id: 'CHECK_HSCODE', ok: true, msg: `HSCode OK: ${ci.HSCode}` });\n  }\n} else {\n  checks.push({ id: 'CHECK_HSCODE', ok: true, msg: 'HSCode PL non disponibile, check saltato' });\n}\n\n// Check 4: OriginCountry CI vs PL (solo se PL presente)\nif (meta.plFound && pl.OriginCountry && ci.OriginCountry) {\n  const origMatch = ci.OriginCountry.toUpperCase() === pl.OriginCountry.toUpperCase();\n  if (!origMatch) {\n    checks.push({ id: 'CHECK_ORIGIN', ok: false, msg: `OriginCountry CI (${ci.OriginCountry}) != PL (${pl.OriginCountry})` });\n    passed = false;\n  } else {\n    checks.push({ id: 'CHECK_ORIGIN', ok: true, msg: `Origin OK: ${ci.OriginCountry}` });\n  }\n} else {\n  checks.push({ id: 'CHECK_ORIGIN', ok: true, msg: 'OriginCountry PL non disponibile, check saltato' });\n}\n\n// Check 5: CI trovata\nif (!meta.ciFound) {\n  checks.push({ id: 'CHECK_CI_FOUND', ok: false, msg: 'Nessun file CI identificato negli allegati' });\n  passed = false;\n} else {\n  checks.push({ id: 'CHECK_CI_FOUND', ok: true, msg: 'CI trovata' });\n}\n\nconst failedChecks = checks.filter(c => !c.ok);\nconst exceptionSummary = failedChecks.map(c => `• [${c.id}] ${c.msg}`).join('\\n');\n\nreturn {\n  ...meta,\n  ci,\n  pl,\n  qualityChecks: checks,\n  qualityPassed: passed,\n  failedChecks,\n  exceptionSummary\n};"
-      },
-      "id": "n15_quality_gates",
-      "name": "Code - Gate di Qualità",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2740, 220]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [
-            {
-              "id": "cond_quality",
-              "leftValue": "={{ $json.qualityPassed }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true" }
-            }
-          ],
-          "combinator": "and"
-        }
-      },
-      "id": "n16_if_quality",
-      "name": "IF - Quality Gate Superato?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [2960, 220]
-    },
-    {
-      "parameters": {
-        "sendTo": "dogana@tuaazienda.com",
-        "subject": "=⚠️ ECCEZIONE DOGANA - AWB {{ $json.awb || 'NON TROVATO' }}",
-        "emailType": "html",
-        "message": "=<h2>Eccezione Dogana FedEx</h2>\n<p><strong>AWB:</strong> {{ $json.awb || 'N/D' }}</p>\n<p><strong>Email FedEx:</strong> {{ $json.emailFrom }}</p>\n<p><strong>Oggetto:</strong> {{ $json.emailSubject }}</p>\n<p><strong>Cartella documenti:</strong> <a href='{{ $json.spFolderWebUrl }}'>Apri cartella SharePoint</a></p>\n<hr>\n<h3>Controlli falliti:</h3>\n<pre>{{ $json.exceptionSummary }}</pre>\n<hr>\n<p><em>Il flusso automatico è stato interrotto. Intervento manuale richiesto.</em></p>",
-        "options": {}
-      },
-      "id": "n17_exception_email",
-      "name": "Email - Notifica Eccezione a Dogana",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [3180, 400],
-      "credentials": {
-        "smtp": { "id": "CRED_SMTP", "name": "SMTP Dogana" }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/me/todo/lists/{{$env.TODO_LIST_ID}}/tasks",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"ECCEZIONE DOGANA - AWB {{ $json.awb || 'N/D' }}\",\n  \"body\": {\n    \"content\": \"Controlli falliti:\\n{{ $json.exceptionSummary }}\\n\\nCartella: {{ $json.spFolderWebUrl }}\",\n    \"contentType\": \"text\"\n  },\n  \"importance\": \"high\",\n  \"status\": \"notStarted\"\n}",
-        "options": {}
-      },
-      "id": "n18_create_todo",
-      "name": "HTTP - Crea Task To-Do Eccezione",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3180, 560],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/root:/Dogana/Templates/LetteraSdoganamento_Template.docx:/content",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
         "options": {
-          "response": { "response": { "responseFormat": "file" } }
+          "fields": []
         }
       },
-      "id": "n19_get_template",
-      "name": "HTTP - Scarica Template Word",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3180, 120],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── PREPARA DATI PER TEMPLATE WORD ───\nconst data = $('IF - Quality Gate Superato?').first().json;\nconst ci = data.ci || {};\nconst today = data.today;\n\n// Importa dati azienda da env o hardcode\nconst importerCompanyName = process.env.IMPORTER_COMPANY_NAME || 'Redmade S.r.l.';\nconst importerVAT          = process.env.IMPORTER_VAT           || 'IT12345678901';\nconst importerAddress      = process.env.IMPORTER_ADDRESS       || 'Via Esempio 1, 20100 Milano (MI)';\n\nreturn {\n  ...data,\n  templateData: {\n    ImporterCompanyName: importerCompanyName,\n    ImporterVAT:         importerVAT,\n    ImporterAddress:     importerAddress,\n    AWB:                 data.awb || '',\n    HSCode:              ci.HSCode || '',\n    OriginCountry:       ci.OriginCountry || '',\n    InvoiceNumber:       ci.InvoiceNumber || '',\n    InvoiceTotal:        String(ci.TotalAmount || ''),\n    Currency:            ci.Currency || 'USD',\n    SupplierName:        ci.SellerName || '',\n    DateToday:           today\n  }\n};"
-      },
-      "id": "n20_prepare_template_data",
-      "name": "Code - Prepara Dati Template",
-      "type": "n8n-nodes-base.code",
+      "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [3180, 220]
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── POPOLA TEMPLATE WORD CON FIND & REPLACE ───\n// Legge il DOCX come binary e sostituisce i placeholder {{CAMPO}}\n// Nota: per Content Controls via Graph API usare endpoint /populate\n// Qui usiamo la libreria docx-templates via HTTP call a funzione Azure\n// oppure un approccio semplificato con placeholder testuali {{CAMPO}}\n\nconst templateData = $('Code - Prepara Dati Template').first().json.templateData;\nconst meta = $('Code - Prepara Dati Template').first().json;\n\n// Restituisce i dati per la chiamata Graph API Word Online\nreturn {\n  ...meta,\n  wordPopulatePayload: {\n    docxTemplateUrl: `/Dogana/Templates/LetteraSdoganamento_Template.docx`,\n    outputFileName: `LetteraSdoganamento_${meta.awb}.docx`,\n    outputPath: `${meta.folderPath}/LetteraSdoganamento_${meta.awb}.docx`,\n    fields: templateData\n  }\n};"
-      },
-      "id": "n21_prepare_populate",
-      "name": "Code - Prepara Payload Populate Word",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3400, 220]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/root:/{{$json.wordPopulatePayload.outputPath}}:/workbook/tables",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.wordPopulatePayload.fields) }}",
-        "options": {}
-      },
-      "id": "n22_populate_word",
-      "name": "HTTP - Popola Template Word (Graph API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3620, 220],
+      "position": [-832, 96],
+      "id": "0695539f-97df-46e1-8062-a6d481a2dca5",
+      "name": "Get many attachments",
+      "webhookId": "b258dbb7-10a1-47b9-806d-cf86c71194ee",
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      },
-      "notes": "Usa Word Online (Business) > Populate a Microsoft Word template. In n8n usare HTTP con Graph API o connettore Power Automate equivalente. Alternativa: Azure Function con docx-templates npm package."
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/root:/{{$json.wordPopulatePayload.outputPath}}:/content?format=pdf",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
-        "options": {
-          "response": {
-            "response": { "responseFormat": "file", "outputPropertyName": "pdfData" }
-          }
+        "microsoftOutlookOAuth2Api": {
+          "id": "8BhGUYjNQOw1jBn3",
+          "name": "Microsoft Outlook account 2"
         }
-      },
-      "id": "n23_convert_pdf",
-      "name": "HTTP - Converti DOCX in PDF (Graph API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3840, 220],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
       }
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/drive/root:/{{$json.wordPopulatePayload.outputPath.replace('.docx', '.pdf')}}:/content",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/pdf" }]
-        },
-        "sendBody": true,
-        "contentType": "binaryData",
-        "inputDataFieldName": "pdfData",
-        "options": {}
+        "jsCode": "// ─── ESTRAI AWB E CLASSIFICA ALLEGATI ───\n//\n// Input: allegati dalla mail FedEx (da 'Get many attachments')\n// Output: un singolo item con awb, dateFormatted, yearMonth,\n//         emailId, emailFrom, emailSubject, ciAttachment, plAttachment\n//\n// Il contenuto degli allegati arriva dal nodo Outlook come\n// campo 'contentBytes' (base64). I fallback coprono altri nomi\n// che n8n potrebbe usare a seconda della versione del node.\n\nconst items = $input.all();\n\n// ── Metadati email ──\nconst emailItem    = $('📧 Trigger - Nuova Mail FedEx').item.json;\nconst emailId      = emailItem.id      || '';\nconst emailFrom    = emailItem.from    || '';\nconst emailSubject = emailItem.subject || '';\n\n// ── Formattazione data (stile italiano) ──\nconst now   = new Date();\nconst day   = String(now.getDate()).padStart(2, '0');\nconst month = String(now.getMonth() + 1).padStart(2, '0');\nconst year  = now.getFullYear();\nconst dateFormatted = `${day}/${month}/${year}`;\nconst yearMonth     = `${year}-${month}`;\n\n// ── Classificazione allegati ──\nlet ciAttachment = null;\nlet plAttachment = null;\nlet awb = '';\n\nfor (const item of items) {\n  const rawName = item.json?.name || '';\n  const name    = rawName.toUpperCase();\n\n  // Contenuto base64: Outlook lo chiama 'contentBytes'; fallback su altri nomi\n  const content = item.json?.contentBytes\n               || item.json?.content\n               || item.json?.data\n               || '';\n\n  // Prova a ricavare AWB: prima un numero di 12 cifre nel nome file,\n  // poi il pattern legacy  CI<cifre>_<cifre>  (es. CI123456789012_001)\n  if (!awb) {\n    const m12 = rawName.match(/(\\d{12})/);\n    if (m12) awb = m12[1];\n  }\n  if (!awb) {\n    const mCI = rawName.match(/CI(\\d+_\\d+)/i);\n    if (mCI) awb = mCI[0]; // include prefisso CI se non ci sono 12 cifre pure\n  }\n\n  // Classifica in base al nome file\n  if (\n    name.startsWith('CI') ||\n    name.includes('_CI.') ||\n    name.includes('COMMERCIAL_INVOICE') ||\n    name.includes('COMMERCIAL INVOICE')\n  ) {\n    ciAttachment = { name: rawName, content };\n  } else if (\n    name.startsWith('PL') ||\n    name.includes('_PL.') ||\n    name.includes('PACKING_LIST') ||\n    name.includes('PACKING LIST')\n  ) {\n    plAttachment = { name: rawName, content };\n  }\n}\n\nreturn [{\n  json: {\n    awb,\n    dateFormatted,\n    yearMonth,\n    emailId,\n    emailFrom,\n    emailSubject,\n    ciAttachment,\n    plAttachment\n  }\n}];\n"
       },
-      "id": "n24_save_pdf",
-      "name": "HTTP - Salva PDF su SharePoint",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [4060, 220],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// ─── PREPARA CORPO REPLY A FEDEX ───\nconst data = $('Code - Prepara Dati Template').first().json;\nconst pdfPath = data.wordPopulatePayload?.outputPath?.replace('.docx', '.pdf');\n\nreturn {\n  ...data,\n  replyBody: `Buongiorno,\\n\\nin riferimento alla spedizione AWB ${data.awb}, in allegato trasmettiamo la seguente documentazione per lo sdoganamento:\\n\\n• Fattura Commerciale (Commercial Invoice)\\n• Packing List${data.plFound ? '' : ' (non disponibile)'}\\n• Lettera di Sdoganamento\\n\\nRestiamo a disposizione per qualsiasi ulteriore informazione.\\n\\nCordiali saluti,\\n${process.env.IMPORTER_COMPANY_NAME || 'Redmade S.r.l.'}`,\n  pdfSPPath: pdfPath\n};"
-      },
-      "id": "n25_prepare_reply",
-      "name": "Code - Prepara Corpo Reply FedEx",
+      "id": "3e9b8ab3-77f3-4b50-903f-c8c7fe2ca637",
+      "name": "⚙️ Estrai AWB e Classifica Allegati",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4280, 220]
+      "position": [-608, 272]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{$('Code - Estrai AWB e Inizializza Variabili').first().json.emailId}}/createReply",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": {\n    \"body\": {\n      \"contentType\": \"Text\",\n      \"content\": \"{{ $json.replyBody }}\"\n    }\n  },\n  \"saveToSentItems\": true\n}",
-        "options": {}
-      },
-      "id": "n26_create_draft_reply",
-      "name": "HTTP - Crea Draft Reply a FedEx",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [4500, 120],
-      "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
-      },
-      "notes": "VERSIONE BOZZA: crea draft senza inviare. Per invio diretto usa /sendMail o aggiungere approvazione prima."
-    },
-    {
-      "parameters": {
-        "resource": "approval",
+        "resource": "folder",
         "operation": "create",
-        "approvalType": "specificUser",
-        "assignedTo": "dogana@tuaazienda.com",
-        "title": "=Approvazione Reply FedEx - AWB {{ $json.awb }}",
-        "details": "=Verifica i documenti in cartella SharePoint e approva l'invio della risposta a FedEx.\\n\\nCartella: {{ $json.spFolderWebUrl }}\\n\\nFornitore: {{ $json.ci.SellerName }}\\nFattura: {{ $json.ci.InvoiceNumber }} - {{ $json.ci.TotalAmount }} {{ $json.ci.Currency }}",
-        "approvalOptions": {
-          "option": [
-            { "label": "Approva e Invia", "value": "approved" },
-            { "label": "Rifiuta - Revisione manuale", "value": "rejected" }
-          ]
+        "name": "={{ $json.yearMonth }}",
+        "options": {}
+      },
+      "id": "794fcfe6-a3a4-4d31-b390-b721f6c0f3c6",
+      "name": "📁 Crea Cartella Mese",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [-512, 80],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "pBj6EJhXKSGZHmR5",
+          "name": "Microsoft Drive account"
         }
       },
-      "id": "n27_approval",
-      "name": "Approvazione - Invia a Dogana Manager",
-      "type": "n8n-nodes-base.microsoftTeams",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "create",
+        "name": "={{ $('⚙️ Estrai AWB e Classifica Allegati').first().json.awb }}",
+        "options": {}
+      },
+      "id": "040f50f4-73bc-4241-ab7c-a61733511bb0",
+      "name": "📁 Crea Cartella AWB",
+      "type": "n8n-nodes-base.microsoftOneDrive",
       "typeVersion": 1,
-      "position": [4500, 300],
-      "notes": "VERSIONE APPROVAZIONE: sostituisce l'invio diretto. Configurare con Microsoft Teams Approval o Outlook."
+      "position": [-272, 80],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "pBj6EJhXKSGZHmR5",
+          "name": "Microsoft Drive account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recupera l'ID della cartella AWB appena creata\n// Se la cartella esisteva già, continueOnFail la passa comunque\nconst folderData = $input.first().json;\nconst awbFolderId = folderData.id || folderData.parentReference?.id || '';\n\nconst parsed = $('⚙️ Estrai AWB e Classifica Allegati').first().json;\n\nreturn [{\n  json: {\n    ...parsed,\n    awbFolderId\n  }\n}];"
+      },
+      "id": "4d9fdd01-c055-4bc5-9cac-80d48f60eb3d",
+      "name": "⚙️ Recupera ID Cartella AWB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-32, 80]
+    },
+    {
+      "parameters": {
+        "parentId": "={{ $json.awbFolderId }}",
+        "fileContent": "={{ $('⚙️ Estrai AWB e Classifica Allegati').first().json.ciAttachment.content }}"
+      },
+      "id": "d6894dd7-a61d-4396-af8b-9864fe18532c",
+      "name": "💾 Salva CI su OneDrive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [208, 0],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "pBj6EJhXKSGZHmR5",
+          "name": "Microsoft Drive account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "parentId": "={{ $('⚙️ Recupera ID Cartella AWB').first().json.awbFolderId }}",
+        "fileContent": "={{ $('⚙️ Estrai AWB e Classifica Allegati').first().json.plAttachment.content }}"
+      },
+      "id": "fcac80c1-3fa2-4b9f-bba9-2a4ccf1027a4",
+      "name": "💾 Salva PL su OneDrive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [208, 160],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "pBj6EJhXKSGZHmR5",
+          "name": "Microsoft Drive account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ciAtt = $('⚙️ Estrai AWB e Classifica Allegati').first().json.ciAttachment;\nconst ciBase64 = ciAtt?.content || ciAtt?.data || '';\n\nif (!ciBase64) {\n  throw new Error('Contenuto CI non trovato negli allegati');\n}\n\nreturn [{\n  json: {\n    ...$('⚙️ Recupera ID Cartella AWB').first().json,\n    ciBase64\n  }\n}];"
+      },
+      "id": "dc195a48-1666-4f29-b1b6-dea441047c64",
+      "name": "⚙️ Prepara PDF per AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [208, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"document\",\n          \"source\": {\n            \"type\": \"base64\",\n            \"media_type\": \"application/pdf\",\n            \"data\": \"{{ $json.ciBase64 }}\"\n          }\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"Analizza questa Commercial Invoice e restituisci SOLO un oggetto JSON valido, senza markdown, senza backtick, senza spiegazioni. Estrai questi campi:\\n{\\n  \\\"InvoiceNumber\\\": \\\"numero fattura\\\",\\n  \\\"InvoiceDate\\\": \\\"data in formato DD/MM/YYYY\\\",\\n  \\\"SupplierName\\\": \\\"nome azienda fornitore\\\",\\n  \\\"BuyerName\\\": \\\"nome azienda importatore\\\",\\n  \\\"BuyerAddress\\\": \\\"indirizzo completo importatore\\\",\\n  \\\"HSCode\\\": \\\"codice doganale con punti es 8541.41.00.00\\\",\\n  \\\"OriginCountry\\\": \\\"paese origine in maiuscolo es CHINA\\\",\\n  \\\"TradeTerms\\\": \\\"termini resa es EXW FOB\\\",\\n  \\\"Currency\\\": \\\"valuta es USD EUR\\\",\\n  \\\"TotalAmount\\\": \\\"importo totale solo numero con punto decimale es 2304.00\\\",\\n  \\\"TotalAmountFormatted\\\": \\\"importo formattato italiano es 2.304,00\\\",\\n  \\\"Description\\\": \\\"descrizione breve merce\\\",\\n  \\\"SignatoryName\\\": \\\"nome referente campo ATTN se presente\\\"\\n}\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "d0c1d77a-cc52-40f9-88a4-61e3170993d1",
+      "name": "🤖 Claude - Estrai Dati CI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [448, 320],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xENARNqPp9QvnyxO",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeResponse = $input.first().json;\nconst rawText = claudeResponse.content?.[0]?.text || '';\n\nlet extracted;\ntry {\n  const cleaned = rawText.replace(/```json|```/g, '').trim();\n  extracted = JSON.parse(cleaned);\n} catch(e) {\n  throw new Error('Claude non ha restituito JSON valido: ' + rawText.substring(0, 300));\n}\n\nconst prev = $('⚙️ Recupera ID Cartella AWB').first().json;\n\n// GATE DI QUALITÀ\nconst errors = [];\nif (!prev.awb || prev.awb.length !== 12) errors.push('AWB non valido o non lungo 12 cifre: ' + prev.awb);\nif (!extracted.InvoiceNumber) errors.push('Numero fattura mancante');\nif (!extracted.TotalAmount || parseFloat(extracted.TotalAmount) <= 0) errors.push('Importo totale non valido o zero');\nif (!extracted.HSCode) errors.push('HS Code mancante');\nif (!extracted.OriginCountry) errors.push('Paese di origine mancante');\n\nreturn [{\n  json: {\n    awb: prev.awb,\n    awbFolderId: prev.awbFolderId,\n    dateFormatted: prev.dateFormatted,\n    yearMonth: prev.yearMonth,\n    emailId: prev.emailId,\n    emailFrom: prev.emailFrom,\n    emailSubject: prev.emailSubject,\n    ciAttachment: prev.ciAttachment,\n    plAttachment: prev.plAttachment,\n    // Dati estratti\n    InvoiceNumber: extracted.InvoiceNumber || '',\n    InvoiceDate: extracted.InvoiceDate || '',\n    SupplierName: extracted.SupplierName || '',\n    HSCode: extracted.HSCode || '',\n    OriginCountry: extracted.OriginCountry || '',\n    TradeTerms: extracted.TradeTerms || '',\n    Currency: extracted.Currency || 'USD',\n    TotalAmount: extracted.TotalAmount || '0',\n    TotalAmountFormatted: extracted.TotalAmountFormatted || '0',\n    Description: extracted.Description || '',\n    SignatoryName: extracted.SignatoryName || 'Vincenzo Reda',\n    // Dati fissi importatore — MODIFICA QUI se cambiano\n    ImporterCompanyName: 'Universal Science S.r.l.',\n    ImporterVAT: '05595260968',\n    ImporterAddress: 'Via Adige 30 – 20006 – Pregnana Milanese (MI)',\n    // Validazione\n    hasErrors: errors.length > 0,\n    errors: errors\n  }\n}];"
+      },
+      "id": "3400c02b-7149-48ff-a4e7-b65c1a43aeba",
+      "name": "⚙️ Valida Dati + Gate Qualità",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 320]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {},
           "conditions": [
             {
-              "id": "cond_approved",
-              "leftValue": "={{ $json.outcome }}",
-              "rightValue": "approved",
-              "operator": { "type": "string", "operation": "equals" }
+              "id": "cond_errors",
+              "leftValue": "={{ $json.hasErrors }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "n28_if_approved",
-      "name": "IF - Approvato?",
+      "id": "634eb53f-90f7-4c4d-aeda-21e793221bcc",
+      "name": "🚦 Check Gate Qualità",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [4720, 300]
+      "position": [928, 320]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{$('HTTP - Crea Draft Reply a FedEx').first().json.id}}/send",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "options": {}
+        "toRecipients": "marco.burato@redmade.it",
+        "subject": "=⚠️ ECCEZIONE DOGANA - AWB {{ $json.awb }}",
+        "additionalFields": {}
       },
-      "id": "n29_send_reply",
-      "name": "HTTP - Invia Reply a FedEx",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [4940, 220],
+      "id": "daa530dd-bbba-41c4-b5f7-c07a63d80ff3",
+      "name": "🚨 Alert Eccezione → marco.burato",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [1168, 160],
+      "webhookId": "75515bc0-be40-408c-ae91-441fb05fd293",
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
+        "microsoftOutlookOAuth2Api": {
+          "id": "1tKgetrUSnruGiVP",
+          "name": "Microsoft Outlook account"
+        }
       }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/lists/{{$env.SP_LIST_REGISTRO_ID}}/items",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"fields\": {\n    \"Title\": \"AWB {{ $json.awb }}\",\n    \"AWB\": \"{{ $json.awb }}\",\n    \"DataOra\": \"{{ new Date().toISOString() }}\",\n    \"Fornitore\": \"{{ $json.ci.SellerName }}\",\n    \"NumeroFattura\": \"{{ $json.ci.InvoiceNumber }}\",\n    \"ImportoFattura\": {{ $json.ci.TotalAmount || 0 }},\n    \"Valuta\": \"{{ $json.ci.Currency }}\",\n    \"HSCode\": \"{{ $json.ci.HSCode }}\",\n    \"OriginCountry\": \"{{ $json.ci.OriginCountry }}\",\n    \"Stato\": \"AUTO-INVIATO\",\n    \"LinkCartella\": \"{{ $json.spFolderWebUrl }}\",\n    \"QualityCheck\": \"OK\"\n  }\n}",
+        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 128,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Converti questo importo in parole in italiano, stile documento ufficiale. Rispondi SOLO con le parole, senza punteggiatura finale. Esempio: 2304.00 → Duemilatrecentoquattro/00. Importo: {{ $json.TotalAmount }}\"\n    }\n  ]\n}",
         "options": {}
       },
-      "id": "n30_log_success",
-      "name": "HTTP - Log Registro Sdoganamenti (Successo)",
+      "id": "942a9f5c-e9a1-4622-a8ee-494430382207",
+      "name": "🤖 Claude - Importo in Lettere",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [5160, 220],
+      "position": [1168, 480],
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
+        "httpHeaderAuth": {
+          "id": "xENARNqPp9QvnyxO",
+          "name": "Header Auth account"
+        }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const amountInWords = $input.first().json.content?.[0]?.text?.trim() || '';\nconst data = $('⚙️ Valida Dati + Gate Qualità').first().json;\n\nreturn [{\n  json: {\n    ...data,\n    TotalAmountInWords: amountInWords\n  }\n}];"
+      },
+      "id": "11f45ae3-22a7-4dcf-82f1-fac225dda4b8",
+      "name": "⚙️ Unisci Dati Completi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1408, 480]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/sites/{{$env.SP_SITE_ID}}/lists/{{$env.SP_LIST_REGISTRO_ID}}/items",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftSharePointOAuth2Api",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"fields\": {\n    \"Title\": \"AWB {{ $json.awb || 'NOAWB' }} - ECCEZIONE\",\n    \"AWB\": \"{{ $json.awb || 'N/D' }}\",\n    \"DataOra\": \"{{ new Date().toISOString() }}\",\n    \"Fornitore\": \"{{ $json.ci?.SellerName || 'N/D' }}\",\n    \"NumeroFattura\": \"{{ $json.ci?.InvoiceNumber || 'N/D' }}\",\n    \"ImportoFattura\": {{ $json.ci?.TotalAmount || 0 }},\n    \"Valuta\": \"{{ $json.ci?.Currency || 'N/D' }}\",\n    \"HSCode\": \"{{ $json.ci?.HSCode || 'N/D' }}\",\n    \"OriginCountry\": \"{{ $json.ci?.OriginCountry || 'N/D' }}\",\n    \"Stato\": \"ECCEZIONE\",\n    \"LinkCartella\": \"{{ $json.spFolderWebUrl || '' }}\",\n    \"QualityCheck\": \"{{ $json.exceptionSummary }}\"\n  }\n}",
+        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 2048,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Genera una lettera di sdoganamento in italiano come HTML. Usa SOLO stile inline, niente CSS separato, niente classi. Usa font Arial 12pt, margini pagina 2cm. Dati da usare: AWB={{ $json.awb }}, Data={{ $json.dateFormatted }}, ImporterName={{ $json.ImporterCompanyName }}, ImporterVAT={{ $json.ImporterVAT }}, ImporterAddress={{ $json.ImporterAddress }}, HSCode={{ $json.HSCode }}, TotalAmountFormatted={{ $json.TotalAmountFormatted }}, Currency={{ $json.Currency }}, OriginCountry={{ $json.OriginCountry }}, InvoiceNumber={{ $json.InvoiceNumber }}, SupplierName={{ $json.SupplierName }}, TotalAmountInWords={{ $json.TotalAmountInWords }}, SignatoryName={{ $json.SignatoryName }}. Struttura ESATTA da rispettare: 1) In alto a destra: 'Pregnana, [Data]'. 2) A sinistra: 'Spettabile' (corsivo) poi 'FEDEX' (grassetto). 3) Riga vuota. 4) Oggetto grassetto sottolineato: 'Oggetto: Spedizione [AWB]'. 5) Riga vuota. 6) Paragrafo: 'La sottoscritta societa [ImporterName], C.F. P.I. n. [ImporterVAT], quale ditta importatrice, autorizza la FEDEX a sdoganare per suo conto la merce:'. 7) Paragrafo: 'Voce doganale [HSCode], Valore totale merce [TotalAmountFormatted] [Currency]'. 8) Paragrafo: 'paese d origine [OriginCountry], relativa alla spedizione in oggetto.'. 9) Riga vuota. 10) Paragrafo: 'Il numero della fattura [InvoiceNumber] del fornitore [SupplierName] ha il valore di [Currency] [TotalAmountFormatted] ([TotalAmountInWords])'. 11) Righe vuote. 12) 'Cordiali saluti,'. 13) Spazio firma. 14) '[ImporterName] - [SignatoryName]'. Rispondi SOLO con l HTML completo, niente markdown niente backtick.\"\n    }\n  ]\n}",
         "options": {}
       },
-      "id": "n31_log_exception",
-      "name": "HTTP - Log Registro Sdoganamenti (Eccezione)",
+      "id": "2f2951ab-3205-4430-a4de-70b225b446fb",
+      "name": "🤖 Claude - Genera HTML Lettera",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3400, 580],
+      "position": [1648, 480],
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
+        "httpHeaderAuth": {
+          "id": "xENARNqPp9QvnyxO",
+          "name": "Header Auth account"
+        }
       }
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{$('Code - Estrai AWB e Inizializza Variabili').first().json.emailId}}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"categories\": [\"DOGANA - COMPLETATO\"]\n}",
-        "options": {}
+        "jsCode": "const htmlRaw = $input.first().json.content?.[0]?.text?.trim() || '';\n// Pulisci eventuali backtick residui\nconst letterHtml = htmlRaw.replace(/```html|```/g, '').trim();\n\nconst data = $('⚙️ Unisci Dati Completi').first().json;\n\nreturn [{\n  json: {\n    ...data,\n    letterHtml\n  }\n}];"
       },
-      "id": "n32_tag_email_complete",
-      "name": "HTTP - Etichetta Email DOGANA COMPLETATO",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [5380, 220],
+      "id": "1e2c0bb4-5346-4589-ab67-8ba3b1af8802",
+      "name": "⚙️ Prepara HTML Lettera",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1888, 480]
+    },
+    {
+      "parameters": {
+        "operation": "pdf"
+      },
+      "id": "325fa648-23b6-432b-bdcc-bd85afeb897d",
+      "name": "📄 Genera PDF Lettera",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [2128, 480]
+    },
+    {
+      "parameters": {
+        "parentId": "={{ $('⚙️ Prepara HTML Lettera').first().json.awbFolderId }}",
+        "binaryData": true
+      },
+      "id": "25be5c5d-d980-4f48-8205-3e81d0434289",
+      "name": "💾 Salva PDF su OneDrive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [2368, 480],
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
+        "microsoftOneDriveOAuth2Api": {
+          "id": "pBj6EJhXKSGZHmR5",
+          "name": "Microsoft Drive account"
+        }
       }
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{$('Code - Estrai AWB e Inizializza Variabili').first().json.emailId}}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"categories\": [\"DOGANA - ECCEZIONE\"]\n}",
-        "options": {}
+        "toRecipients": "marco.burato@redmade.it",
+        "subject": "=TEST - Lettera Sdoganamento AWB {{ $('⚙️ Prepara HTML Lettera').first().json.awb }}",
+        "additionalFields": {}
       },
-      "id": "n33_tag_email_exception",
-      "name": "HTTP - Etichetta Email DOGANA ECCEZIONE",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3620, 580],
+      "id": "bde0b2b9-11a9-4f37-b8ba-30d0c1e6ea82",
+      "name": "📤 Reply a FedEx da dogana@",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2608, 480],
+      "webhookId": "2ed10776-cee9-4f43-bdcb-d7705f672f5c",
       "credentials": {
-        "oAuth2Api": { "id": "CRED_GRAPH", "name": "Microsoft Graph API" }
+        "microsoftOutlookOAuth2Api": {
+          "id": "1tKgetrUSnruGiVP",
+          "name": "Microsoft Outlook account"
+        }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('⚙️ Prepara HTML Lettera').first().json;\nconsole.log(`✅ COMPLETATO - AWB: ${data.awb} | Fattura: ${data.InvoiceNumber} | Importo: ${data.TotalAmountFormatted} ${data.Currency} | Fornitore: ${data.SupplierName}`);\nreturn [{ json: { success: true, awb: data.awb, completedAt: new Date().toISOString() } }];"
+      },
+      "id": "5d236867-2d38-42fb-b5df-f4cf4f0a04f1",
+      "name": "✅ Completato",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3088, 480]
     }
   ],
   "connections": {
-    "Outlook - Nuova Email": {
-      "main": [[{ "node": "IF - Email FedEx valida?", "type": "main", "index": 0 }]]
-    },
-    "IF - Email FedEx valida?": {
+    "📧 Trigger - Nuova Mail FedEx": {
       "main": [
-        [{ "node": "Code - Estrai AWB e Inizializza Variabili", "type": "main", "index": 0 }],
-        []
+        [{ "node": "Update a message", "type": "main", "index": 0 }]
       ]
     },
-    "Code - Estrai AWB e Inizializza Variabili": {
-      "main": [[{ "node": "HTTP - Crea Cartella SharePoint", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Crea Cartella SharePoint": {
-      "main": [[{ "node": "Code - Merge Info Cartella", "type": "main", "index": 0 }]]
-    },
-    "Code - Merge Info Cartella": {
-      "main": [[{ "node": "Code - Classifica Allegati", "type": "main", "index": 0 }]]
-    },
-    "Code - Classifica Allegati": {
-      "main": [[{ "node": "Loop - Allegati uno per uno", "type": "main", "index": 0 }]]
-    },
-    "Loop - Allegati uno per uno": {
+    "Update a message": {
       "main": [
-        [{ "node": "HTTP - Upload Allegato SharePoint", "type": "main", "index": 0 }],
-        [{ "node": "Code - Raccogli Documenti Classificati", "type": "main", "index": 0 }]
+        [{ "node": "🔍 Filtro Mail FedEx Valida", "type": "main", "index": 0 }]
       ]
     },
-    "HTTP - Upload Allegato SharePoint": {
-      "main": [[{ "node": "Loop - Allegati uno per uno", "type": "main", "index": 0 }]]
-    },
-    "Code - Raccogli Documenti Classificati": {
+    "🔍 Filtro Mail FedEx Valida": {
       "main": [
-        [{ "node": "HTTP - Estrai Dati CI (OpenAI GPT-4o)", "type": "main", "index": 0 }],
-        [{ "node": "HTTP - Estrai Dati PL (OpenAI GPT-4o)", "type": "main", "index": 0 }]
+        [{ "node": "Get many attachments", "type": "main", "index": 0 }]
       ]
     },
-    "HTTP - Estrai Dati CI (OpenAI GPT-4o)": {
-      "main": [[{ "node": "Code - Parsing Risposta CI", "type": "main", "index": 0 }]]
-    },
-    "Code - Parsing Risposta CI": {
-      "main": [[{ "node": "Merge - Unisci Dati CI + PL", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Estrai Dati PL (OpenAI GPT-4o)": {
-      "main": [[{ "node": "Code - Parsing Risposta PL", "type": "main", "index": 0 }]]
-    },
-    "Code - Parsing Risposta PL": {
-      "main": [[{ "node": "Merge - Unisci Dati CI + PL", "type": "main", "index": 1 }]]
-    },
-    "Merge - Unisci Dati CI + PL": {
-      "main": [[{ "node": "Code - Gate di Qualità", "type": "main", "index": 0 }]]
-    },
-    "Code - Gate di Qualità": {
-      "main": [[{ "node": "IF - Quality Gate Superato?", "type": "main", "index": 0 }]]
-    },
-    "IF - Quality Gate Superato?": {
+    "Get many attachments": {
       "main": [
-        [{ "node": "Code - Prepara Dati Template", "type": "main", "index": 0 }],
+        [{ "node": "⚙️ Estrai AWB e Classifica Allegati", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Estrai AWB e Classifica Allegati": {
+      "main": [
+        [{ "node": "📁 Crea Cartella Mese", "type": "main", "index": 0 }]
+      ]
+    },
+    "📁 Crea Cartella Mese": {
+      "main": [
+        [{ "node": "📁 Crea Cartella AWB", "type": "main", "index": 0 }]
+      ]
+    },
+    "📁 Crea Cartella AWB": {
+      "main": [
+        [{ "node": "⚙️ Recupera ID Cartella AWB", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Recupera ID Cartella AWB": {
+      "main": [
         [
-          { "node": "Email - Notifica Eccezione a Dogana", "type": "main", "index": 0 },
-          { "node": "HTTP - Crea Task To-Do Eccezione", "type": "main", "index": 0 },
-          { "node": "HTTP - Log Registro Sdoganamenti (Eccezione)", "type": "main", "index": 0 },
-          { "node": "HTTP - Etichetta Email DOGANA ECCEZIONE", "type": "main", "index": 0 }
+          { "node": "💾 Salva CI su OneDrive", "type": "main", "index": 0 },
+          { "node": "💾 Salva PL su OneDrive", "type": "main", "index": 0 },
+          { "node": "⚙️ Prepara PDF per AI", "type": "main", "index": 0 }
         ]
       ]
     },
-    "Code - Prepara Dati Template": {
-      "main": [[{ "node": "Code - Prepara Payload Populate Word", "type": "main", "index": 0 }]]
-    },
-    "Code - Prepara Payload Populate Word": {
-      "main": [[{ "node": "HTTP - Popola Template Word (Graph API)", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Popola Template Word (Graph API)": {
-      "main": [[{ "node": "HTTP - Converti DOCX in PDF (Graph API)", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Converti DOCX in PDF (Graph API)": {
-      "main": [[{ "node": "HTTP - Salva PDF su SharePoint", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Salva PDF su SharePoint": {
-      "main": [[{ "node": "Code - Prepara Corpo Reply FedEx", "type": "main", "index": 0 }]]
-    },
-    "Code - Prepara Corpo Reply FedEx": {
-      "main": [[{ "node": "HTTP - Crea Draft Reply a FedEx", "type": "main", "index": 0 }]]
-    },
-    "HTTP - Crea Draft Reply a FedEx": {
+    "⚙️ Prepara PDF per AI": {
       "main": [
-        [{ "node": "HTTP - Invia Reply a FedEx", "type": "main", "index": 0 }],
-        [{ "node": "Approvazione - Invia a Dogana Manager", "type": "main", "index": 0 }]
-      ],
-      "notes": "Ramo 0 = FULL AUTO | Ramo 1 = MANUAL APPROVAL"
-    },
-    "Approvazione - Invia a Dogana Manager": {
-      "main": [[{ "node": "IF - Approvato?", "type": "main", "index": 0 }]]
-    },
-    "IF - Approvato?": {
-      "main": [
-        [{ "node": "HTTP - Invia Reply a FedEx", "type": "main", "index": 0 }],
-        []
+        [{ "node": "🤖 Claude - Estrai Dati CI", "type": "main", "index": 0 }]
       ]
     },
-    "HTTP - Invia Reply a FedEx": {
-      "main": [[{ "node": "HTTP - Log Registro Sdoganamenti (Successo)", "type": "main", "index": 0 }]]
+    "🤖 Claude - Estrai Dati CI": {
+      "main": [
+        [{ "node": "⚙️ Valida Dati + Gate Qualità", "type": "main", "index": 0 }]
+      ]
     },
-    "HTTP - Log Registro Sdoganamenti (Successo)": {
-      "main": [[{ "node": "HTTP - Etichetta Email DOGANA COMPLETATO", "type": "main", "index": 0 }]]
+    "⚙️ Valida Dati + Gate Qualità": {
+      "main": [
+        [{ "node": "🚦 Check Gate Qualità", "type": "main", "index": 0 }]
+      ]
+    },
+    "🚦 Check Gate Qualità": {
+      "main": [
+        [{ "node": "🚨 Alert Eccezione → marco.burato", "type": "main", "index": 0 }],
+        [{ "node": "🤖 Claude - Importo in Lettere", "type": "main", "index": 0 }]
+      ]
+    },
+    "🤖 Claude - Importo in Lettere": {
+      "main": [
+        [{ "node": "⚙️ Unisci Dati Completi", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Unisci Dati Completi": {
+      "main": [
+        [{ "node": "🤖 Claude - Genera HTML Lettera", "type": "main", "index": 0 }]
+      ]
+    },
+    "🤖 Claude - Genera HTML Lettera": {
+      "main": [
+        [{ "node": "⚙️ Prepara HTML Lettera", "type": "main", "index": 0 }]
+      ]
+    },
+    "⚙️ Prepara HTML Lettera": {
+      "main": [
+        [{ "node": "📄 Genera PDF Lettera", "type": "main", "index": 0 }]
+      ]
+    },
+    "📄 Genera PDF Lettera": {
+      "main": [
+        [{ "node": "💾 Salva PDF su OneDrive", "type": "main", "index": 0 }]
+      ]
+    },
+    "💾 Salva PDF su OneDrive": {
+      "main": [
+        [{ "node": "📤 Reply a FedEx da dogana@", "type": "main", "index": 0 }]
+      ]
+    },
+    "📤 Reply a FedEx da dogana@": {
+      "main": [
+        [{ "node": "✅ Completato", "type": "main", "index": 0 }]
+      ]
     }
   },
-  "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
-  },
-  "staticData": null,
-  "tags": ["dogana", "fedex", "sdoganamento", "automazione"],
-  "triggerCount": 1,
-  "updatedAt": "2026-03-06T00:00:00.000Z",
-  "versionId": "1.0.0"
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2a7dbd56bc7af4b5ac93415f8d5c376e157cd8c5b9b020b9cbd9f5da989780c6"
+  }
 }
