@@ -1,0 +1,324 @@
+{
+  "name": "Expense Tracker - Foto Scontrino → Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "n1_telegram_trigger",
+      "name": "Telegram - Foto Scontrino",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300],
+      "webhookId": "expense-tracker-webhook",
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond_has_photo",
+              "leftValue": "={{ $json.message.photo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "n2_check_photo",
+      "name": "Ha una foto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.accessToken }}/getFile",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "file_id",
+              "value": "={{ $('Telegram - Foto Scontrino').item.json.message.photo.last().file_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n3_get_file_info",
+      "name": "Telegram - getFile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, 200],
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot{{ $credentials.telegramApi.accessToken }}/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "n4_download_image",
+      "name": "Download Immagine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 200],
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "gpt-4o",
+          "max_tokens": 500,
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Analizza questo scontrino e restituisci un JSON con questi campi esatti:\n{\n  \"data\": \"GG/MM/AAAA\",\n  \"fornitore\": \"nome negozio/ristorante/azienda\",\n  \"categoria\": \"una di: Pasto, Trasporto, Carburante, Supermercato, Ufficio, Abbigliamento, Salute, Intrattenimento, Altro\",\n  \"importo\": 0.00,\n  \"note\": \"dettagli rilevanti facoltativi\",\n  \"errore\": null\n}\n\nSe non riesci a leggere lo scontrino o mancano dati essenziali (importo, fornitore), imposta errore con una spiegazione e lascia gli altri campi vuoti.\nRispondi SOLO con il JSON, senza markdown, senza testo aggiuntivo."
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "=data:image/jpeg;base64,{{ $binary.data.data }}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n5_ai_vision",
+      "name": "AI Vision - Analizza Scontrino",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 200],
+      "credentials": {
+        "httpHeaderAuth": { "id": "CRED_OPENAI", "name": "OpenAI API" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Estrai il contenuto dalla risposta OpenAI\nconst aiResponse = $input.item.json.choices[0].message.content.trim();\n\nlet parsed;\ntry {\n  // Rimuovi eventuali backtick markdown se presenti\n  const cleaned = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return [{\n    json: {\n      errore: 'Risposta AI non valida: ' + aiResponse,\n      data: '',\n      fornitore: '',\n      categoria: '',\n      importo: '',\n      note: ''\n    }\n  }];\n}\n\n// Normalizza importo\nif (parsed.importo !== undefined && parsed.importo !== null && parsed.importo !== '') {\n  parsed.importo = parseFloat(String(parsed.importo).replace(',', '.')).toFixed(2);\n}\n\n// Normalizza data: se mancante usa oggi\nif (!parsed.data || parsed.data === '') {\n  const oggi = new Date();\n  parsed.data = `${String(oggi.getDate()).padStart(2,'0')}/${String(oggi.getMonth()+1).padStart(2,'0')}/${oggi.getFullYear()}`;\n}\n\nreturn [{ json: parsed }];"
+      },
+      "id": "n6_parse_response",
+      "name": "Parse Risposta AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond_no_error",
+              "leftValue": "={{ $json.errore }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "n7_check_ai_result",
+      "name": "AI ha letto lo scontrino?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1420, 200]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "ID_GOOGLE_SHEET",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $json.data }}",
+            "Fornitore": "={{ $json.fornitore }}",
+            "Categoria": "={{ $json.categoria }}",
+            "Importo": "={{ $json.importo }}",
+            "Note": "={{ $json.note }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            { "id": "Data", "displayName": "Data", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Fornitore", "displayName": "Fornitore", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Categoria", "displayName": "Categoria", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" },
+            { "id": "Importo", "displayName": "Importo", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "number" },
+            { "id": "Note", "displayName": "Note", "required": false, "defaultMatch": false, "canBeUsedToMatch": true, "display": true, "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n8_google_sheets",
+      "name": "Google Sheets - Scrivi Riga",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1640, 100],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
+        "text": "=✅ *Scontrino registrato!*\n\n📅 Data: {{ $('Parse Risposta AI').item.json.data }}\n🏪 Fornitore: {{ $('Parse Risposta AI').item.json.fornitore }}\n🏷️ Categoria: {{ $('Parse Risposta AI').item.json.categoria }}\n💶 Importo: €{{ $('Parse Risposta AI').item.json.importo }}\n📝 Note: {{ $('Parse Risposta AI').item.json.note || '-' }}\n\n_Riga aggiunta al registro spese._",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "n9_confirm_ok",
+      "name": "Telegram - Conferma Successo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1860, 100],
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
+        "text": "=❌ *Impossibile leggere lo scontrino*\n\nMotivo: {{ $('Parse Risposta AI').item.json.errore }}\n\nProva con una foto più nitida, ben illuminata e inquadra l'intero scontrino.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "n10_error_ai",
+      "name": "Telegram - Errore Lettura",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1640, 340],
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
+        "text": "📸 Mandami una *foto* dello scontrino!\n\nHo ricevuto un messaggio senza immagine. Scatta o allega una foto dello scontrino che vuoi registrare.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "n11_no_photo",
+      "name": "Telegram - Richiedi Foto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [540, 420],
+      "credentials": {
+        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram - Foto Scontrino": {
+      "main": [
+        [{ "node": "Ha una foto?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ha una foto?": {
+      "main": [
+        [{ "node": "Telegram - getFile", "type": "main", "index": 0 }],
+        [{ "node": "Telegram - Richiedi Foto", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram - getFile": {
+      "main": [
+        [{ "node": "Download Immagine", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download Immagine": {
+      "main": [
+        [{ "node": "AI Vision - Analizza Scontrino", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Vision - Analizza Scontrino": {
+      "main": [
+        [{ "node": "Parse Risposta AI", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Risposta AI": {
+      "main": [
+        [{ "node": "AI ha letto lo scontrino?", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI ha letto lo scontrino?": {
+      "main": [
+        [{ "node": "Google Sheets - Scrivi Riga", "type": "main", "index": 0 }],
+        [{ "node": "Telegram - Errore Lettura", "type": "main", "index": 0 }]
+      ]
+    },
+    "Google Sheets - Scrivi Riga": {
+      "main": [
+        [{ "node": "Telegram - Conferma Successo", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "templateId": "expense-tracker-vision",
+    "instanceId": "expense-tracker-001"
+  },
+  "id": "expense-tracker-workflow",
+  "tags": [
+    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag1", "name": "spese" },
+    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag2", "name": "AI Vision" },
+    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag3", "name": "telegram" }
+  ]
+}
