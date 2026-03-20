@@ -6,14 +6,17 @@
         "updates": ["message"],
         "additionalFields": {}
       },
-      "id": "n1_telegram_trigger",
-      "name": "Telegram - Foto Scontrino",
       "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.1,
-      "position": [100, 300],
-      "webhookId": "expense-tracker-webhook",
+      "typeVersion": 1.2,
+      "position": [-128, -32],
+      "id": "1ff6cc73-bc36-4f1f-9439-03474ad554e6",
+      "name": "Telegram Trigger",
+      "webhookId": "20b9e3bf-e413-4fb1-8c3f-9dd663327484",
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     },
     {
@@ -35,38 +38,33 @@
           "combinator": "and"
         }
       },
-      "id": "n2_check_photo",
-      "name": "Ha una foto?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [320, 300]
+      "position": [100, -32],
+      "id": "check-photo-node",
+      "name": "Ha una foto?"
     },
     {
       "parameters": {
-        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.accessToken }}/getFile",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "file_id",
-              "value": "={{ $('Telegram - Foto Scontrino').item.json.message.photo.last().file_id }}"
-            }
-          ]
-        },
-        "options": {}
+        "resource": "file",
+        "fileId": "={{ $json.message.photo[$json.message.photo.length - 1].file_id }}",
+        "additionalFields": {}
       },
-      "id": "n3_get_file_info",
-      "name": "Telegram - getFile",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [540, 200],
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [320, -120],
+      "id": "88b4ae77-9a47-48b8-b63d-84e45d92d9e8",
+      "name": "Get a file",
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     },
     {
       "parameters": {
-        "url": "=https://api.telegram.org/file/bot{{ $credentials.telegramApi.accessToken }}/{{ $json.result.file_path }}",
+        "url": "=https://api.telegram.org/file/bot{{ $credentials.accessToken }}/{{ $json.result.file_path }}",
         "options": {
           "response": {
             "response": {
@@ -75,34 +73,34 @@
           }
         }
       },
-      "id": "n4_download_image",
-      "name": "Download Immagine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [760, 200],
+      "position": [540, -120],
+      "id": "download-image-node",
+      "name": "Download Immagine",
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "contentType": "json",
         "body": {
-          "model": "gpt-4o",
+          "model": "google/gemini-flash-1.5",
           "max_tokens": 500,
           "messages": [
             {
@@ -110,7 +108,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Analizza questo scontrino e restituisci un JSON con questi campi esatti:\n{\n  \"data\": \"GG/MM/AAAA\",\n  \"fornitore\": \"nome negozio/ristorante/azienda\",\n  \"categoria\": \"una di: Pasto, Trasporto, Carburante, Supermercato, Ufficio, Abbigliamento, Salute, Intrattenimento, Altro\",\n  \"importo\": 0.00,\n  \"note\": \"dettagli rilevanti facoltativi\",\n  \"errore\": null\n}\n\nSe non riesci a leggere lo scontrino o mancano dati essenziali (importo, fornitore), imposta errore con una spiegazione e lascia gli altri campi vuoti.\nRispondi SOLO con il JSON, senza markdown, senza testo aggiuntivo."
+                  "text": "Analizza questo scontrino e restituisci SOLO un JSON con questi campi:\n{\n  \"data\": \"GG/MM/AAAA\",\n  \"fornitore\": \"nome negozio\",\n  \"categoria\": \"una di: Pasto, Trasporto, Carburante, Supermercato, Ufficio, Salute, Intrattenimento, Altro\",\n  \"importo\": 0.00,\n  \"note\": \"dettagli facoltativi\",\n  \"errore\": null\n}\nSe non riesci a leggere importo o fornitore, metti errore con spiegazione. Niente markdown, solo JSON."
                 },
                 {
                   "type": "image_url",
@@ -124,24 +122,27 @@
         },
         "options": {}
       },
-      "id": "n5_ai_vision",
-      "name": "AI Vision - Analizza Scontrino",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [980, 200],
+      "position": [760, -120],
+      "id": "ai-vision-node",
+      "name": "AI Vision - Analizza Scontrino",
       "credentials": {
-        "httpHeaderAuth": { "id": "CRED_OPENAI", "name": "OpenAI API" }
+        "httpHeaderAuth": {
+          "id": "06S91OrDmDlAsD5X",
+          "name": "OpenRouter account 2"
+        }
       }
     },
     {
       "parameters": {
-        "jsCode": "// Estrai il contenuto dalla risposta OpenAI\nconst aiResponse = $input.item.json.choices[0].message.content.trim();\n\nlet parsed;\ntry {\n  // Rimuovi eventuali backtick markdown se presenti\n  const cleaned = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return [{\n    json: {\n      errore: 'Risposta AI non valida: ' + aiResponse,\n      data: '',\n      fornitore: '',\n      categoria: '',\n      importo: '',\n      note: ''\n    }\n  }];\n}\n\n// Normalizza importo\nif (parsed.importo !== undefined && parsed.importo !== null && parsed.importo !== '') {\n  parsed.importo = parseFloat(String(parsed.importo).replace(',', '.')).toFixed(2);\n}\n\n// Normalizza data: se mancante usa oggi\nif (!parsed.data || parsed.data === '') {\n  const oggi = new Date();\n  parsed.data = `${String(oggi.getDate()).padStart(2,'0')}/${String(oggi.getMonth()+1).padStart(2,'0')}/${oggi.getFullYear()}`;\n}\n\nreturn [{ json: parsed }];"
+        "jsCode": "const raw = $input.item.json.choices[0].message.content.trim();\nlet parsed;\ntry {\n  const cleaned = raw.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { errore: 'JSON non valido: ' + raw, data: '', fornitore: '', categoria: '', importo: '', note: '' } }];\n}\n// Normalizza importo\nif (parsed.importo != null && parsed.importo !== '') {\n  parsed.importo = parseFloat(String(parsed.importo).replace(',', '.')).toFixed(2);\n}\n// Usa data di oggi se mancante\nif (!parsed.data) {\n  const d = new Date();\n  parsed.data = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;\n}\nreturn [{ json: parsed }];"
       },
-      "id": "n6_parse_response",
-      "name": "Parse Risposta AI",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 200]
+      "position": [980, -120],
+      "id": "parse-response-node",
+      "name": "Parse Risposta AI"
     },
     {
       "parameters": {
@@ -162,11 +163,11 @@
           "combinator": "and"
         }
       },
-      "id": "n7_check_ai_result",
-      "name": "AI ha letto lo scontrino?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1420, 200]
+      "position": [1200, -120],
+      "id": "check-ai-result-node",
+      "name": "AI ha letto lo scontrino?"
     },
     {
       "parameters": {
@@ -201,80 +202,83 @@
         },
         "options": {}
       },
-      "id": "n8_google_sheets",
-      "name": "Google Sheets - Scrivi Riga",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [1640, 100],
+      "position": [1420, -220],
+      "id": "google-sheets-node",
+      "name": "Google Sheets - Scrivi Riga",
       "credentials": {
         "googleSheetsOAuth2Api": { "id": "CRED_GSHEETS", "name": "Google Sheets Spese" }
       }
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
         "text": "=✅ *Scontrino registrato!*\n\n📅 Data: {{ $('Parse Risposta AI').item.json.data }}\n🏪 Fornitore: {{ $('Parse Risposta AI').item.json.fornitore }}\n🏷️ Categoria: {{ $('Parse Risposta AI').item.json.categoria }}\n💶 Importo: €{{ $('Parse Risposta AI').item.json.importo }}\n📝 Note: {{ $('Parse Risposta AI').item.json.note || '-' }}\n\n_Riga aggiunta al registro spese._",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
+        "additionalFields": { "parse_mode": "Markdown" }
       },
-      "id": "n9_confirm_ok",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1640, -220],
+      "id": "confirm-ok-node",
       "name": "Telegram - Conferma Successo",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [1860, 100],
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
-        "text": "=❌ *Impossibile leggere lo scontrino*\n\nMotivo: {{ $('Parse Risposta AI').item.json.errore }}\n\nProva con una foto più nitida, ben illuminata e inquadra l'intero scontrino.",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=❌ *Impossibile leggere lo scontrino*\n\nMotivo: {{ $('Parse Risposta AI').item.json.errore }}\n\nProva con una foto più nitida e ben illuminata.",
+        "additionalFields": { "parse_mode": "Markdown" }
       },
-      "id": "n10_error_ai",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1420, 0],
+      "id": "error-ai-node",
       "name": "Telegram - Errore Lettura",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [1640, 340],
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram - Foto Scontrino').item.json.message.chat.id }}",
-        "text": "📸 Mandami una *foto* dello scontrino!\n\nHo ricevuto un messaggio senza immagine. Scatta o allega una foto dello scontrino che vuoi registrare.",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "📸 Mandami una *foto* dello scontrino!\n\nHo ricevuto un messaggio senza immagine.",
+        "additionalFields": { "parse_mode": "Markdown" }
       },
-      "id": "n11_no_photo",
-      "name": "Telegram - Richiedi Foto",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [540, 420],
+      "position": [320, 80],
+      "id": "no-photo-node",
+      "name": "Telegram - Richiedi Foto",
       "credentials": {
-        "telegramApi": { "id": "CRED_TELEGRAM", "name": "Telegram Bot Spese" }
+        "telegramApi": {
+          "id": "eFpAnLP1Wp843374",
+          "name": "Telegram account"
+        }
       }
     }
   ],
   "connections": {
-    "Telegram - Foto Scontrino": {
+    "Telegram Trigger": {
       "main": [
         [{ "node": "Ha una foto?", "type": "main", "index": 0 }]
       ]
     },
     "Ha una foto?": {
       "main": [
-        [{ "node": "Telegram - getFile", "type": "main", "index": 0 }],
+        [{ "node": "Get a file", "type": "main", "index": 0 }],
         [{ "node": "Telegram - Richiedi Foto", "type": "main", "index": 0 }]
       ]
     },
-    "Telegram - getFile": {
+    "Get a file": {
       "main": [
         [{ "node": "Download Immagine", "type": "main", "index": 0 }]
       ]
@@ -306,19 +310,64 @@
       ]
     }
   },
+  "pinData": {
+    "Telegram Trigger": [
+      {
+        "update_id": 319188716,
+        "message": {
+          "message_id": 44,
+          "from": {
+            "id": 7152348238,
+            "is_bot": false,
+            "first_name": "Marco",
+            "last_name": "Burato",
+            "language_code": "it"
+          },
+          "chat": {
+            "id": 7152348238,
+            "first_name": "Marco",
+            "last_name": "Burato",
+            "type": "private"
+          },
+          "date": 1774001601,
+          "photo": [
+            {
+              "file_id": "AgACAgQAAxkBAAMrab0cou7PAAGmif157HaiLmK88lueAALMDWsb7vXoUcNQmqzXk6sTAQADAgADcwADOgQ",
+              "file_unique_id": "AQADzA1rG-716FF4",
+              "file_size": 1380,
+              "width": 67,
+              "height": 90
+            },
+            {
+              "file_id": "AgACAgQAAxkBAAMrab0cou7PAAGmif157HaiLmK88lueAALMDWsb7vXoUcNQmqzXk6sTAQADAgADbQADOgQ",
+              "file_unique_id": "AQADzA1rG-716FFy",
+              "file_size": 21333,
+              "width": 240,
+              "height": 320
+            },
+            {
+              "file_id": "AgACAgQAAxkBAAMrab0cou7PAAGmif157HaiLmK88lueAALMDWsb7vXoUcNQmqzXk6sTAQADAgADeAADOgQ",
+              "file_unique_id": "AQADzA1rG-716FF9",
+              "file_size": 103677,
+              "width": 600,
+              "height": 800
+            },
+            {
+              "file_id": "AgACAgQAAxkBAAMrab0cou7PAAGmif157HaiLmK88lueAALMDWsb7vXoUcNQmqzXk6sTAQADAgADeQADOgQ",
+              "file_unique_id": "AQADzA1rG-716FF-",
+              "file_size": 143234,
+              "width": 960,
+              "height": 1280
+            }
+          ]
+        }
+      }
+    ]
+  },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "1.0.0",
+  "settings": { "executionOrder": "v1" },
   "meta": {
-    "templateId": "expense-tracker-vision",
-    "instanceId": "expense-tracker-001"
-  },
-  "id": "expense-tracker-workflow",
-  "tags": [
-    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag1", "name": "spese" },
-    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag2", "name": "AI Vision" },
-    { "createdAt": "2026-03-20", "updatedAt": "2026-03-20", "id": "tag3", "name": "telegram" }
-  ]
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2a7dbd56bc7af4b5ac93415f8d5c376e157cd8c5b9b020b9cbd9f5da989780c6"
+  }
 }
