@@ -65,6 +65,8 @@
     {
       "parameters": {
         "url": "=https://api.telegram.org/file/bot{{ $credentials.accessToken }}/{{ $json.result.file_path }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
         "options": {
           "response": {
             "response": {
